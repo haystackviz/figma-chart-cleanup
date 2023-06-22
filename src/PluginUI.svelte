@@ -1,16 +1,20 @@
 <script>
-  //import Global CSS from the svelte boilerplate
-  //contains Figma color vars, spacing vars, utility classes and more
+  import { onMount } from "svelte";
+  import { writable } from "svelte/store";
+
+  import BarChartIcon from "./icons/BarChart.svg";
+  import BarChartSeriesIcon from "./icons/BarChartSeries.svg";
+  import LineChartIcon from "./icons/LineChart.svg";
+  import LineChartSeriesIcon from "./icons/LineChartSeries.svg";
+
   import { GlobalCSS } from "figma-plugin-ds-svelte";
   import "./app.css";
-
-  // import d3
-  import * as d3 from "d3";
 
   //import some Svelte Figma UI components
   import {
     Button,
     Checkbox,
+    Icon,
     IconArrowLeftRight,
     IconCaretRight,
     IconLayoutGridRows,
@@ -18,168 +22,117 @@
     Label,
     SelectMenu,
   } from "figma-plugin-ds-svelte";
-  import Textarea from "./components/inputs/Textarea.svelte";
 
   let disabled = true,
-    notReady = true,
-    data,
-    width = 800,
-    leftMargin = 166,
-    showXAxis = true,
-    showHeader = true,
-    showValues = true;
+    chartType;
 
-  $: disabled = data === null;
+  let chartTypes = [
+    {
+      name: "Bar chart",
+      icon: BarChartIcon,
+      value: "bar",
+    },
+    {
+      name: "Bar chart (series)",
+      icon: BarChartSeriesIcon,
+      value: "barSeries",
+    },
+    {
+      name: "Line chart",
+      icon: LineChartIcon,
+      value: "line",
+    },
+    {
+      name: "Line chart (series)",
+      icon: LineChartSeriesIcon,
+      value: "lineSeries",
+    },
+  ];
 
-  $: formattedData = data && d3.tsvParse(data, d3.autoType).length > 0 ? d3.tsvParse(data, d3.autoType) : null;
-  $: columns = formattedData ? Object.keys(formattedData[0]) : null;
+  const currentSelection = writable([]);
+  const isFrame = writable(false);
 
-  $: menuItems = formattedData
-    ? [
-        ...columns.map((column, i) => ({
-          value: column,
-          label: column,
-          group: null,
-          selected: false,
-          type: formattedData[0][column] ? typeof formattedData[0][column] : null,
-        })),
-      ]
-    : null;
+  $: disabled = $currentSelection.length < 1 || !$isFrame;
+  $: notReady = chartType === undefined || disabled;
 
-  $: stringColumns = menuItems ? menuItems.filter((item) => item.type === "string") : null;
-  $: numberColumns = menuItems ? menuItems.filter((item) => item.type === "number") : null;
+  window.onmessage = async (event) => {
+    const message = event.data.pluginMessage;
+    if (!message) return;
 
-  let bars, size;
+    switch (message.type) {
+      case "load":
+        currentSelection.set(message.currentSelection);
+        isFrame.set(message.isFrame);
+        break;
+      case "selectionChanged":
+        currentSelection.set(message.currentSelection);
+        isFrame.set(message.isFrame);
+        break;
+    }
+  };
 
-  $: notReady = formattedData && bars && size ? false : true;
-
-  // use d3 to get tick values for the x axis
-  $: ticks =
-    formattedData && size
-      ? d3
-          .scaleLinear()
-          .domain([0, d3.max(formattedData, (d) => d[size.value])])
-          .nice()
-          .ticks(5)
-      : null;
-
-  function draw() {
+  function cleanChart() {
     parent.postMessage(
       {
         pluginMessage: {
-          type: "draw",
-          data: formattedData,
-          bars: bars.value,
-          size: size.value,
-          width: width,
-          leftMargin: leftMargin,
-          ticks: ticks,
-          showXAxis: showXAxis,
-          showHeader: showHeader,
-          showValues: showValues,
+          type: "cleanChart",
+          chartType: chartType,
         },
       },
       "*"
     );
   }
 
+  function selectChartType(type) {
+    chartType = type;
+  }
+
   function cancel() {
     parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
   }
 
-  function clearData() {
-    data = null;
-  }
+  onMount(() => {
+    parent.postMessage({ pluginMessage: { type: "init" } }, "*");
+  });
 </script>
 
 <div class="wrapper p-xxsmall">
-  <div class="flex items-center justify-between w-full my-2">
-    <Label>Data</Label>
-    {#if data}
-      <Button on:click={clearData} {disabled} variant="tertiary">Clear</Button>
-    {/if}
-  </div>
-  {#if !formattedData}
-    <Textarea placeholder="Copy and paste your TSV data from Excel or Google Sheets." bind:value={data} />
+  {#if disabled}
+    <div class="flex items-center justify-center w-full my-2">
+      <p class="note italic text-center text-xs">
+        Drop your exported SVG onto the current page and select it to get started.
+      </p>
+    </div>
   {:else}
-    <div class="h-16 my-2 overflow-scroll table-container">
-      <table class="w-full border-collapse border-spacing-0 text-xs font-normal leading-normal rounded-[4px]">
-        <thead>
-          <tr>
-            <th class="text-xs sticky -top-[1px] font-bold text-left py-2 px-4 whitespace-nowrap number">&nbsp;</th>
-            {#each Object.keys(formattedData[0]) as key}
-              <th class="text-xs sticky -top-[1px] font-bold text-left py-2 px-4 whitespace-nowrap">{key}</th>
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#each formattedData as row, i}
-            <tr>
-              <td class="text-xs number">{i + 1}</td>
-              {#each Object.values(row) as value}
-                <td class="text-xs">{value}</td>
-              {/each}
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <!-- <Label>Chart type</Label> -->
+    <div class="flex items-stretch justify-center gap-2 w-full my-2">
+      {#each chartTypes as chart}
+        <div
+          class="chart-choice h-full w-1/4 px-2 py-2 flex flex-col items-center justify-center gap-2 rounded-lg cursor-pointer"
+          class:selected={chart.value === chartType}
+          on:click={() => selectChartType(chart.value)}
+        >
+          <div class="flex items-center justify-center w-12 h-12 rounded-md bg-white chart-icon">
+            {@html chart.icon}
+          </div>
+          <div class="flex w-full h-8 items-center justify-center">
+            <p class="text-xs text-center grow leading-tight">{chart.name}</p>
+          </div>
+        </div>
+      {/each}
     </div>
   {/if}
 
-  {#if !disabled}
-    {#if menuItems}
-      <div class="flex items-start w-full gap-2">
-        <div class="w-full my-2">
-          <Label>Bars</Label>
-          <SelectMenu
-            iconName={IconLayoutGridRows}
-            placeholder="Column"
-            bind:menuItems={stringColumns}
-            bind:value={bars}
-            class="mb-xxsmall"
-          />
-        </div>
-        <div class="w-full my-2">
-          <Label>Size</Label>
-          <SelectMenu
-            iconName={IconArrowLeftRight}
-            placeholder="Column"
-            bind:menuItems={numberColumns}
-            bind:value={size}
-            class="mb-xxsmall"
-          />
-        </div>
-        <!-- <div class="w-full my-2">
-          <Label>Colour</Label>
-          <SelectMenu
-            iconName={IconEyedropper}
-            placeholder="Column"
-            bind:menuItems
-            bind:value={color}
-            class="mb-xxsmall"
-          />
-        </div> -->
-      </div>
-      <div class="flex w-full gap-2 my-2">
-        <div>
-          <Label>Width</Label>
-          <Input iconName={IconArrowLeftRight} bind:value={width} placeholder="Chart width" />
-        </div>
-        <div>
-          <Label>Left margin</Label>
-          <Input iconName={IconCaretRight} bind:value={leftMargin} placeholder="Left margin" />
-        </div>
-      </div>
-      <div class="flex items-center w-full gap-2">
-        <Checkbox bind:checked={showHeader}>Include header?</Checkbox>
-        <Checkbox bind:checked={showXAxis}>Show X axis?</Checkbox>
-        <Checkbox bind:checked={showValues}>Show values?</Checkbox>
-      </div>
-    {/if}
+  <div class="flex justify-center p-xxsmall mb-xsmall">
+    <Button on:click={cancel} variant="secondary" class="mr-xsmall">Cancel</Button>
+    <Button on:click={cleanChart} bind:disabled={notReady}>Clean!</Button>
+  </div>
 
-    <div class="flex p-xxsmall mb-xsmall">
-      <Button on:click={cancel} variant="secondary" class="mr-xsmall">Cancel</Button>
-      <Button on:click={draw} bind:disabled={notReady}>Draw</Button>
+  {#if !disabled}
+    <div class="flex items-center justify-center w-full mt-12">
+      <p class="note italic text-center text-xs">
+        Want to see more chart types? Shoot me an email at <a href="mailto:sam@haystack.design">sam@haystack.design</a>
+      </p>
     </div>
   {/if}
 </div>
@@ -189,48 +142,27 @@
     fill: var(--figma-color-text) !important;
   }
 
-  .table-container {
-    height: 100px;
-    overflow: scroll;
-    font-size: 10px !important;
-    border: 1px solid var(--figma-color-border);
+  .chart-choice {
+    border: 2px solid transparent;
   }
 
-  table {
-    border: 1px solid var(--figma-color-border);
+  .chart-choice.selected {
+    border: 2px solid var(--figma-color-border-onsuccess);
+  }
+
+  .chart-choice:hover {
+    border: 2px solid var(--figma-color-border-onselected);
+  }
+
+  .chart-icon {
+    box-shadow: var(--shadow-hud);
+  }
+
+  p {
     color: var(--figma-color-text);
   }
 
-  table thead th {
-    background-color: var(--figma-color-bg-secondary);
-    color: var(--figma-color-text);
-  }
-
-  table tbody {
-    background-color: var(--figma-color-bg);
-  }
-
-  table tbody tr:not(:last-of-type) {
-    border-bottom: 1px solid var(--figma-color-border);
-  }
-
-  table tbody td {
-    padding: 12px 16px;
-    min-width: 100px;
-  }
-
-  table tbody td:not(:last-of-type) {
-    border-right: 1px solid var(--figma-color-border);
-  }
-
-  table tbody td:last-child {
-    padding-right: 16px;
-  }
-
-  table tbody td.number,
-  table thead th.number {
-    text-align: center;
-    width: 40px;
-    min-width: unset;
+  p.note {
+    color: var(--figma-color-text-secondary);
   }
 </style>
