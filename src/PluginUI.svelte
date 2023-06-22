@@ -105,10 +105,10 @@
     </div>
   {:else}
     <!-- <Label>Chart type</Label> -->
-    <div class="flex items-stretch justify-center gap-2 w-full my-2">
+    <div class="flex items-stretch justify-center gap-2 w-full my-2 flex-wrap">
       {#each chartTypes as chart}
         <div
-          class="chart-choice h-full w-1/4 px-2 py-2 flex flex-col items-center justify-center gap-2 rounded-lg cursor-pointer"
+          class="chart-choice h-full w-1/3 px-2 py-2 flex items-center justify-center gap-2 rounded-lg cursor-pointer"
           class:selected={chart.value === chartType}
           on:click={() => selectChartType(chart.value)}
         >
@@ -116,7 +116,7 @@
             {@html chart.icon}
           </div>
           <div class="flex w-full h-8 items-center justify-center">
-            <p class="text-xs text-center grow leading-tight">{chart.name}</p>
+            <p class="text-sm grow leading-tight">{chart.name}</p>
           </div>
         </div>
       {/each}
